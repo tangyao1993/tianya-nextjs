@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Post, ViewState } from '@/types';
-import { MOCK_POSTS } from '@/data/posts';
 import { Header, Footer } from '@/components/Layout';
 import { AIChat } from '@/components/AIChat';
+import { marked } from 'marked';
 
 // Category Badge Component
 const CategoryBadge: React.FC<{ category: string }> = ({ category }) => {
@@ -15,6 +15,8 @@ const CategoryBadge: React.FC<{ category: string }> = ({ category }) => {
     '天涯杂谈': 'bg-slate-100 text-slate-700 border-slate-200',
     '情感天地': 'bg-rose-100 text-rose-800 border-rose-200',
     '职场天地': 'bg-indigo-100 text-indigo-800 border-indigo-200',
+    '经济专栏': 'bg-orange-100 text-orange-800 border-orange-200',
+    '国学经典': 'bg-purple-100 text-purple-800 border-purple-200',
   };
   const colorClass = colors[category] || 'bg-slate-100 text-slate-700 border-slate-200';
 
@@ -25,14 +27,98 @@ const CategoryBadge: React.FC<{ category: string }> = ({ category }) => {
   );
 };
 
+// Markdown 渲染组件
+const MarkdownContent: React.FC<{ content: string }> = ({ content }) => {
+  const [html, setHtml] = useState('');
+
+  useEffect(() => {
+    // 配置 marked
+    marked.setOptions({
+      breaks: true,
+      gfm: true,
+    });
+    setHtml(marked(content) as string);
+  }, [content]);
+
+  return (
+    <div
+      className="prose prose-slate max-w-none prose-headings:font-serif prose-p:text-lg prose-p:leading-loose prose-p:text-justify"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+};
+
 // Home View Component
 const HomeView: React.FC<{ onSelectPost: (post: Post) => void }> = ({ onSelectPost }) => {
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [categories, setCategories] = useState<string[]>(['全部']);
   const [filter, setFilter] = useState('全部');
-  const categories = ['全部', ...Array.from(new Set(MOCK_POSTS.map(p => p.category)))];
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
-  const filteredPosts = filter === '全部'
-    ? MOCK_POSTS
-    : MOCK_POSTS.filter(p => p.category === filter);
+  // 获取分类
+  useEffect(() => {
+    fetch('/api/categories')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setCategories(['全部', ...data.data]);
+        }
+      })
+      .catch(err => console.error('获取分类失败:', err));
+  }, []);
+
+  // 获取帖子列表
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+
+    const categoryParam = filter === '全部' ? '' : `?category=${encodeURIComponent(filter)}`;
+    fetch(`/api/posts${categoryParam}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setPosts(data.data);
+        } else {
+          setError(data.error || '获取数据失败');
+        }
+      })
+      .catch(err => {
+        console.error('获取帖子失败:', err);
+        setError('获取数据失败，请稍后重试');
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [filter]);
+
+  if (loading) {
+    return (
+      <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full">
+        <div className="text-center py-20">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-sky-600 mb-4"></div>
+          <p className="text-slate-500">加载中...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (error) {
+    return (
+      <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full">
+        <div className="text-center py-20">
+          <p className="text-red-500 mb-4">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-6 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700"
+          >
+            重新加载
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full">
@@ -65,15 +151,17 @@ const HomeView: React.FC<{ onSelectPost: (post: Post) => void }> = ({ onSelectPo
 
       {/* Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredPosts.map(post => (
+        {posts.map(post => (
           <div
             key={post.id}
             onClick={() => onSelectPost(post)}
             className="group bg-white rounded-xl p-6 shadow-sm hover:shadow-xl hover:shadow-sky-100/50 hover:-translate-y-1 transition-all duration-300 border border-slate-200 hover:border-sky-200 cursor-pointer flex flex-col h-full"
           >
             <div className="flex justify-between items-start mb-4">
-              <CategoryBadge category={post.category} />
-              <span className="text-xs text-slate-400 font-mono">{post.date}</span>
+              {post.category && <CategoryBadge category={post.category} />}
+              <span className="text-xs text-slate-400 font-mono">
+                {post.date || new Date(post.created_at).toLocaleDateString('zh-CN')}
+              </span>
             </div>
 
             <h3 className="text-lg font-bold text-slate-800 mb-3 group-hover:text-sky-700 transition-colors line-clamp-2 leading-snug">
@@ -87,14 +175,14 @@ const HomeView: React.FC<{ onSelectPost: (post: Post) => void }> = ({ onSelectPo
             <div className="flex items-center justify-between text-xs text-slate-400 pt-4 border-t border-slate-50">
               <div className="flex items-center gap-2">
                 <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 text-[10px]">
-                   {post.author.charAt(0)}
+                   {post.author ? post.author.charAt(0) : '?'}
                 </div>
-                <span className="font-medium text-slate-600">{post.author}</span>
+                <span className="font-medium text-slate-600">{post.author || '佚名'}</span>
               </div>
               <div className="flex items-center gap-3">
                  <span className="flex items-center gap-1">
                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                   {(post.views / 10000).toFixed(1)}万
+                   {post.view_count ? (post.view_count / 10000).toFixed(1) + '万' : '0'}
                  </span>
               </div>
             </div>
@@ -102,7 +190,7 @@ const HomeView: React.FC<{ onSelectPost: (post: Post) => void }> = ({ onSelectPo
         ))}
       </div>
 
-      {filteredPosts.length === 0 && (
+      {posts.length === 0 && (
         <div className="text-center py-20 text-slate-400">
           暂无该分类的帖子
         </div>
@@ -112,46 +200,129 @@ const HomeView: React.FC<{ onSelectPost: (post: Post) => void }> = ({ onSelectPo
 };
 
 // Detail View Component
-const DetailView: React.FC<{ post: Post }> = ({ post }) => {
+const DetailView: React.FC<{ postId: string; onBack: () => void }> = ({ postId, onBack }) => {
+  const [post, setPost] = useState<Post | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showChat, setShowChat] = useState(false);
 
-  // Scroll to top on mount
-  React.useEffect(() => {
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+
+    fetch(`/api/posts/${postId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          const postData = data.data;
+          // 解析 tags JSON 字符串
+          if (typeof postData.tags === 'string') {
+            try {
+              postData.tags = JSON.parse(postData.tags);
+            } catch {
+              postData.tags = [];
+            }
+          }
+          setPost(postData);
+        } else {
+          setError(data.error || '获取数据失败');
+        }
+      })
+      .catch(err => {
+        console.error('获取帖子详情失败:', err);
+        setError('获取数据失败，请稍后重试');
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+
     window.scrollTo(0, 0);
-  }, [post.id]);
+  }, [postId]);
+
+  if (loading) {
+    return (
+      <main className="flex-grow max-w-4xl mx-auto px-4 sm:px-6 py-10 w-full">
+        <div className="text-center py-20">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-sky-600 mb-4"></div>
+          <p className="text-slate-500">加载中...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (error || !post) {
+    return (
+      <main className="flex-grow max-w-4xl mx-auto px-4 sm:px-6 py-10 w-full">
+        <div className="text-center py-20">
+          <p className="text-red-500 mb-4">{error || '帖子不存在'}</p>
+          <button
+            onClick={onBack}
+            className="px-6 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700"
+          >
+            返回首页
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="flex-grow max-w-4xl mx-auto px-4 sm:px-6 py-10 w-full relative">
       <article className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-20">
         {/* Post Header */}
         <div className="p-8 border-b border-slate-100 bg-slate-50/30">
-          <div className="flex items-center gap-3 mb-5">
-            <CategoryBadge category={post.category} />
-            <span className="text-sm text-slate-400 font-mono">{post.date}</span>
-          </div>
+          {post.category && (
+            <div className="flex items-center gap-3 mb-5">
+              <CategoryBadge category={post.category} />
+              <span className="text-sm text-slate-400 font-mono">
+                {post.date || new Date(post.created_at).toLocaleDateString('zh-CN')}
+              </span>
+            </div>
+          )}
           <h1 className="text-2xl md:text-3xl font-bold text-slate-900 mb-6 leading-tight font-serif">
             {post.title}
           </h1>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center text-sky-700 font-bold text-sm">
-                {post.author.charAt(0)}
+                {post.author ? post.author.charAt(0) : '?'}
               </div>
-              <span className="text-sm font-medium text-slate-700">{post.author}</span>
+              <span className="text-sm font-medium text-slate-700">{post.author || '佚名'}</span>
             </div>
             <div className="text-sm text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
-              浏览：{(post.views).toLocaleString()}
+              浏览：{(post.view_count || 0).toLocaleString()}
             </div>
           </div>
         </div>
 
         {/* Post Content */}
-        <div className="p-8 md:p-12 prose prose-slate max-w-none text-slate-700 leading-loose">
-          {post.content.split('\n').map((para, idx) => (
-            para.trim() ? <p key={idx} className="mb-6 text-justify indent-8 text-lg">{para}</p> : <br key={idx} />
-          ))}
+        <div className="p-8 md:p-12">
+          {post.content ? (
+            <MarkdownContent content={post.content} />
+          ) : (
+            <div className="prose prose-slate max-w-none text-slate-700 leading-loose">
+              {post.content_text?.split('\n').map((para, idx) => (
+                para.trim() ? <p key={idx} className="mb-6 text-justify indent-8 text-lg">{para}</p> : <br key={idx} />
+              ))}
+            </div>
+          )}
         </div>
 
+        {/* Tags */}
+        {post.tags && post.tags.length > 0 && (
+          <div className="px-8 pb-6">
+            <div className="flex flex-wrap gap-2">
+              {post.tags.map((tag, idx) => (
+                <span
+                  key={idx}
+                  className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-sm"
+                >
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </article>
 
       {/* Sticky Action Button */}
@@ -167,20 +338,17 @@ const DetailView: React.FC<{ post: Post }> = ({ post }) => {
         </button>
       </div>
 
-      {/* Recommended Section */}
+      {/* Back Button */}
       <div className="mb-12">
-        <h3 className="text-lg font-bold text-slate-800 mb-5 flex items-center gap-2">
-           <span className="w-1 h-5 bg-sky-500 rounded-full"></span>
-           相关推荐
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {MOCK_POSTS.filter(p => p.id !== post.id).slice(0, 2).map(p => (
-            <div key={p.id} className="p-5 bg-white rounded-xl border border-slate-200 text-slate-600 hover:border-sky-300 hover:shadow-sm transition-all cursor-not-allowed opacity-60">
-              <span className="font-bold block mb-2 text-slate-800 line-clamp-1">{p.title}</span>
-              <span className="text-xs text-slate-400 block">（正在阅读当前帖子，需返回主页切换）</span>
-            </div>
-          ))}
-        </div>
+        <button
+          onClick={onBack}
+          className="flex items-center gap-2 text-slate-600 hover:text-sky-600 transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          返回列表
+        </button>
       </div>
 
       <AIChat
@@ -195,16 +363,16 @@ const DetailView: React.FC<{ post: Post }> = ({ post }) => {
 // Main App
 export default function Home() {
   const [viewState, setViewState] = useState<ViewState>(ViewState.HOME);
-  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
 
   const handleSelectPost = (post: Post) => {
-    setSelectedPost(post);
+    setSelectedPostId(post.id);
     setViewState(ViewState.DETAIL);
   };
 
   const handleNavigateHome = () => {
     setViewState(ViewState.HOME);
-    setSelectedPost(null);
+    setSelectedPostId(null);
   };
 
   return (
@@ -215,8 +383,8 @@ export default function Home() {
         <HomeView onSelectPost={handleSelectPost} />
       )}
 
-      {viewState === ViewState.DETAIL && selectedPost && (
-        <DetailView post={selectedPost} />
+      {viewState === ViewState.DETAIL && selectedPostId && (
+        <DetailView postId={selectedPostId} onBack={handleNavigateHome} />
       )}
 
       <Footer />

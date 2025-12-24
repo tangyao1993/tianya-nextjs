@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { ViewState } from '@/types';
 
 interface HeaderProps {
@@ -44,13 +45,21 @@ export const Header: React.FC<HeaderProps> = ({ onNavigateHome, currentView }) =
             </h1>
           </div>
 
-          <div className="hidden md:flex items-center space-x-6 text-xs text-slate-500 font-medium">
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>在线: {online}</span>
-            </div>
-            <div className="flex items-center gap-1 px-2 py-1 bg-slate-50 rounded-md border border-slate-100">
-               <span>总访问: {visits.toLocaleString()}</span>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/mineru-test"
+              className="text-xs font-semibold text-slate-600 border border-slate-200 px-3 py-1 rounded-full hover:border-sky-300 hover:text-sky-700 hover:bg-sky-50 transition-colors"
+            >
+              MinerU 测试
+            </Link>
+            <div className="hidden md:flex items-center space-x-6 text-xs text-slate-500 font-medium">
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>在线: {online}</span>
+              </div>
+              <div className="flex items-center gap-1 px-2 py-1 bg-slate-50 rounded-md border border-slate-100">
+                 <span>总访问: {visits.toLocaleString()}</span>
+              </div>
             </div>
           </div>
         </div>
